@@ -16,8 +16,9 @@ pip install pillow pyzbar
 
 ## 使用
 ```bash
-python otp_local/qr.py    # 解码二维码 -> otpauth.txt
-python main.py            # 从 otpauth.txt 生成 OTP
+python otp_local/qr.py              # 自动检测 qr.png/qr.jpg
+python otp_local/qr.py image.jpg    # 指定图片文件
+python main.py                      # 从 otpauth.txt 生成 OTP
 ```
 
 ## 输出
@@ -34,7 +35,7 @@ otp-local/
 │   ├── core.py
 │   └── qr.py
 ├── main.py
-├── qr.png <- 放二维码照片
+├── qr.png / qr.jpg   <- 放二维码图片（支持 png, jpg, jpeg, webp）
 └── otpauth.txt
 ```
 

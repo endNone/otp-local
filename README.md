@@ -16,8 +16,9 @@ pip install pillow pyzbar
 
 ## Usage
 ```bash
-python otp_local/qr.py    # Decode QR code -> otpauth.txt
-python main.py            # Generate OTP from otpauth.txt
+python otp_local/qr.py              # Auto-detect qr.png/qr.jpg
+python otp_local/qr.py image.jpg    # Specify image file
+python main.py                      # Generate OTP from otpauth.txt
 ```
 
 ## Output
@@ -34,7 +35,7 @@ otp-local/
 │   ├── core.py
 │   └── qr.py
 ├── main.py
-├── qr.png <- Put your QR code image here
+├── qr.png / qr.jpg   <- Put your QR code image here (supports png, jpg, jpeg, webp)
 └── otpauth.txt
 ```
 
