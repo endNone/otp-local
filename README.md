@@ -1,33 +1,101 @@
 <p align="left">
-    <a href="README_CN.md">中文</a>&nbsp ｜ &nbspEnglish
+    English&nbsp ｜ &nbsp<a href="README_CN.md">中文</a>
 </p>
 <br>
 
 # otp-local
 
-Offline TOTP/HOTP Generator. No cloud, no internet, no tracking.
+Offline **TOTP / HOTP** Generator.  
+No cloud · No internet · No tracking.
 
-Generate one-time passwords locally from QR codes or otpauth:// URIs. Supports SHA1, SHA256, SHA512 algorithms with 6-8 digit codes.
+Generate one-time passwords locally from **QR codes** or `otpauth://` URIs.  
+Fully compatible with **Google Authenticator**, **FreeOTP**, **FreeOTP Plus**.
 
-## Install
+
+---
+
+## 📦 Installation
+
+### Python dependencies
 ```bash
-pip install pillow pyzbar
+pip install pillow pyzbar pexpect
 ```
 
-## Usage
+### System dependency (required by pyzbar)
+
+**Linux**
 ```bash
-python otp_local/qr.py              # Auto-detect qr.png/qr.jpg
-python otp_local/qr.py image.jpg    # Specify image file
-python main.py                      # Generate OTP from otpauth.txt
+sudo apt install libzbar0
 ```
 
-## Output
-```
-[SUCCESS] OTP Code: 123456
-[INFO] Valid for ~25 seconds
+**macOS**
+```bash
+brew install zbar
 ```
 
-## Structure
+---
+
+## 🛠 Usage
+
+### Step 1️⃣ Decode QR Code
+
+```bash
+python otp_local/qr.py
+python otp_local/qr.py image.png
+```
+
+Supported formats:
+```
+png / jpg / jpeg / webp
+```
+
+Output:
+```
+otpauth.txt
+```
+
+---
+
+### Step 2️⃣ Generate OTP (Live)
+
+```bash
+python main.py
+```
+
+Example output:
+```
+[OTP] 123456  |  Valid for 27s
+```
+
+---
+
+## 🔐 SSH Auto Login (Optional)
+
+Environment variables:
+```bash
+export OTP_SSH_USER=username
+export OTP_SSH_HOST=example.com
+export OTP_SSH_PORT=22
+```
+
+```bash
+python ssh_auto.py
+```
+
+---
+
+## 🔒 Security Notes
+
+- ❌ No internet access
+- ❌ No cloud synchronization
+- ❌ No secret upload
+- ✔ All secrets stay local
+- ✔ RFC 4226 / 6238 compliant
+
+---
+
+## 📁 Project Structure
+
 ```
 otp-local/
 ├── otp_local/
@@ -35,10 +103,13 @@ otp-local/
 │   ├── core.py
 │   └── qr.py
 ├── main.py
-├── qr.png / qr.jpg   <- Put your QR code image here (supports png, jpg, jpeg, webp)
-└── otpauth.txt
+├── ssh_auto.py
+├── otpauth.txt
+└── qr.png / qr.jpg
 ```
 
-## License
+---
+
+## 📜 License
 
 MIT

@@ -5,29 +5,96 @@
 
 # otp-local
 
-离线 TOTP/HOTP 生成器。无需云端，无需联网，无需追踪。
+离线 **TOTP / HOTP** 一次性密码生成器。  
+无需云端 · 无需联网 · 无追踪。
 
-从二维码或 otpauth:// URI 本地生成一次性密码。支持 SHA1、SHA256、SHA512 算法，6-8 位验证码。
+从 **二维码图片** 或 `otpauth://` URI 本地生成动态验证码，  
+完全兼容 **Google Authenticator / FreeOTP / FreeOTP Plus**。
 
-## 安装
+---
+
+## 📦 安装
+
+### Python 依赖
 ```bash
-pip install pillow pyzbar
+pip install pillow pyzbar pexpect
 ```
 
-## 使用
+### 系统依赖（pyzbar 必需）
+
+**Linux**
 ```bash
-python otp_local/qr.py              # 自动检测 qr.png/qr.jpg
-python otp_local/qr.py image.jpg    # 指定图片文件
-python main.py                      # 从 otpauth.txt 生成 OTP
+sudo apt install libzbar0
 ```
 
-## 输出
-```
-[SUCCESS] OTP Code: 123456
-[INFO] Valid for ~25 seconds
+**macOS**
+```bash
+brew install zbar
 ```
 
-## 结构
+---
+
+## 🛠 使用方法
+
+### 第一步：解析二维码
+
+```bash
+python otp_local/qr.py
+python otp_local/qr.py image.png
+```
+
+支持格式：
+```
+png / jpg / jpeg / webp
+```
+
+输出文件：
+```
+otpauth.txt
+```
+
+---
+
+### 第二步：生成动态验证码
+
+```bash
+python main.py
+```
+
+实时显示：
+```
+[OTP] 123456  |  Valid for 27s
+```
+
+---
+
+## 🔐 SSH 自动登录（可选）
+
+可选环境变量：
+```bash
+export OTP_SSH_USER=用户名
+export OTP_SSH_HOST=服务器地址
+export OTP_SSH_PORT=22
+```
+
+```bash
+python ssh_auto.py
+```
+
+---
+
+## 🔒 安全说明
+
+- ❌ 不联网
+- ❌ 不同步
+- ❌ 不上传密钥
+- ✔ 所有密钥仅保存在本地
+- ✔ 符合 RFC 4226 / RFC 6238 标准
+
+---
+
+## 📁 项目结构
+
 ```
 otp-local/
 ├── otp_local/
@@ -35,10 +102,13 @@ otp-local/
 │   ├── core.py
 │   └── qr.py
 ├── main.py
-├── qr.png / qr.jpg   <- 放二维码图片（支持 png, jpg, jpeg, webp）
-└── otpauth.txt
+├── ssh_auto.py
+├── otpauth.txt
+└── qr.png / qr.jpg
 ```
 
-## 许可证
+---
+
+## 📜 许可证
 
 MIT
