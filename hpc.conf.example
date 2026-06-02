@@ -1,0 +1,15 @@
+[ssh]
+user = <your_username>
+host = <login_gateway_ip>
+port = 22
+
+[alloc]
+partition = auto
+qos = normal
+cpus = 4
+mem = 16G
+time = 08:00:00
+job_name = vscode
+
+[vscode]
+remote_path = /storage/<lab>Lab/<your_username>

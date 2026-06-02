@@ -84,6 +84,37 @@ python ssh_auto.py
 
 ---
 
+## 🖥 HPC Compute-Node + VSCode (Optional)
+
+`hpc_code.py` turns OTP login into a single command: it allocates a compute node
+and opens VSCode Remote-SSH **on that node** (not the login gateway).
+
+Flow: `local →(OTP, SSH ControlMaster reuse)→ login gateway →(ProxyJump)→ allocated compute node`.
+The VSCode server runs on the compute node, so it is not killed by login-node limits.
+
+### Configure
+```bash
+cp hpc.conf.example hpc.conf      # fill in user/host/port + resources (cpus/mem/partition/time)
+```
+`partition = auto` automatically picks a partition that currently has free capacity
+(or give a comma-separated priority list).
+
+### Commands
+```bash
+python hpc_code.py          # allocate node + open VSCode (prints cost, asks to confirm)
+python hpc_code.py --status # show current allocation
+python hpc_code.py --down   # release allocation + close connection (stops billing)
+```
+
+### Aliases (optional)
+```bash
+alias hpcup="python /path/to/otp-local/hpc_code.py"
+alias hpcstat="python /path/to/otp-local/hpc_code.py --status"
+alias hpcdown="python /path/to/otp-local/hpc_code.py --down"
+```
+
+---
+
 ## 🔒 Security Notes
 
 - ❌ No internet access
@@ -104,6 +135,8 @@ otp-local/
 │   └── qr.py
 ├── main.py
 ├── ssh_auto.py
+├── hpc_code.py            # HPC compute-node + VSCode launcher
+├── hpc.conf.example       # copy to hpc.conf (gitignored) and fill in
 ├── otpauth.txt
 └── qr.png / qr.jpg
 ```

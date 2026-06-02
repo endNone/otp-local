@@ -83,6 +83,35 @@ python ssh_auto.py
 
 ---
 
+## 🖥 HPC 计算节点 + VSCode（可选）
+
+`hpc_code.py` 把 OTP 登录变成一条命令：申请一个计算节点，并在**该节点上**打开 VSCode Remote-SSH（而非登录网关）。
+
+链路：`本机 →(OTP, SSH ControlMaster 复用)→ 登录网关 →(ProxyJump)→ 申请到的计算节点`。
+vscode-server 跑在计算节点上，不会被登录节点资源限制杀掉。
+
+### 配置
+```bash
+cp hpc.conf.example hpc.conf      # 填写 user/host/port + 资源（cpus/mem/partition/time）
+```
+`partition = auto` 会自动挑当前有空闲的分区（也可填逗号分隔的优先级列表）。
+
+### 命令
+```bash
+python hpc_code.py          # 申请节点 + 打开 VSCode（先显示核时成本并确认）
+python hpc_code.py --status # 查看当前分配
+python hpc_code.py --down   # 释放分配 + 关闭连接（停止计费）
+```
+
+### Alias（可选）
+```bash
+alias hpcup="python /path/to/otp-local/hpc_code.py"
+alias hpcstat="python /path/to/otp-local/hpc_code.py --status"
+alias hpcdown="python /path/to/otp-local/hpc_code.py --down"
+```
+
+---
+
 ## 🔒 安全说明
 
 - ❌ 不联网
@@ -103,6 +132,8 @@ otp-local/
 │   └── qr.py
 ├── main.py
 ├── ssh_auto.py
+├── hpc_code.py            # HPC 计算节点 + VSCode 启动器
+├── hpc.conf.example       # 复制为 hpc.conf（已 gitignore）并填写
 ├── otpauth.txt
 └── qr.png / qr.jpg
 ```
