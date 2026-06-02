@@ -1,2 +1,5 @@
 otpauth.txt
 qr.png
+hpc.conf
+.hpc_alloc.json
+__pycache__/

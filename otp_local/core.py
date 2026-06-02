@@ -5,12 +5,10 @@ import struct
 import time
 from urllib.parse import urlparse, parse_qs, unquote
 
-
 def _b32decode(secret_b32):
     s = secret_b32.strip().replace(" ", "").upper()
     pad = "=" * ((8 - len(s) % 8) % 8)
     return base64.b32decode(s + pad, casefold=True)
-
 
 def _hotp(key, counter, digits, algorithm):
     algo = algorithm.upper()
@@ -29,7 +27,6 @@ def _hotp(key, counter, digits, algorithm):
     code_int = struct.unpack(">I", h[offset:offset + 4])[0] & 0x7fffffff
     code = code_int % (10 ** digits)
     return str(code).zfill(digits)
-
 
 def parse_otpauth_uri(uri):
     uri = unquote(uri.strip())
@@ -71,7 +68,6 @@ def parse_otpauth_uri(uri):
         "period": period,
         "counter": counter,
     }
-
 
 def otp_now_from_uri(uri, at_time=None):
     info = parse_otpauth_uri(uri)

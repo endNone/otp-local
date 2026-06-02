@@ -4,11 +4,10 @@ from PIL import Image
 from pyzbar.pyzbar import decode
 
 def find_qr_image():
-    # 优先使用命令行参数
+
     if len(sys.argv) > 1:
         return sys.argv[1]
-    
-    # 自动检测
+
     for name in ["qr.png", "qr.jpg", "qr.jpeg", "qr.webp"]:
         if os.path.exists(name):
             return name
