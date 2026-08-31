@@ -5,6 +5,9 @@ hpc_code.py — 一条命令：自动登录 HPC → 申请计算节点 → 保�
   本机 --(OTP, ControlMaster 复用)--> 登录网关 --(ProxyJump)--> 申请到的计算节点
   VSCode Remote-SSH 连接计算节点（vscode-server 跑在有资源的计算节点上，不会被登录节点限制杀掉）。
 
+本脚本只管理默认连接（建议 10005）。10004 old 临时连接由 hpc_agent 的
+`hpc_run.py --old` 独立管理；两者只共享 OTP 登录锁，不共享 ControlPath。
+
 资源（核数/内存/分区/时长）在 hpc.conf 中预定义。个人信息全在 hpc.conf（已 gitignore）。
 
 用法：
@@ -23,6 +26,7 @@ import json
 import time
 import math
 import shutil
+import fcntl
 import subprocess
 import configparser
 
@@ -33,6 +37,10 @@ ALLOC_FILE = os.path.join(OTP_DIR, ".hpc_alloc.json")
 SSH_CONFIG = os.path.expanduser("~/.ssh/config")
 LOGIN_ALIAS = "hpc-login"
 COMPUTE_ALIAS = "hpc-compute"
+HPC_MASTER_GUARD = os.path.abspath(os.path.join(
+    OTP_DIR, "..", "hpc_agent", "scripts", "hpc_master_guard.sh"))
+MASTER_LOCK_PATH = os.path.expanduser("~/.hpc-session.lock")
+MASTER_CHECK_TIMEOUT = 3
 MARK_START = "# >>> hpc_code managed >>>"
 MARK_END = "# <<< hpc_code managed <<<"
 
@@ -67,10 +75,44 @@ def time_to_hours(s):
     h, mn, sec = parts
     return d * 24 + h + mn / 60 + sec / 3600
 
+def master_state():
+    try:
+        r = subprocess.run(["ssh", "-O", "check", LOGIN_ALIAS],
+                           stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL,
+                           timeout=MASTER_CHECK_TIMEOUT)
+        return "alive" if r.returncode == 0 else "absent"
+    except subprocess.TimeoutExpired:
+        return "unknown"
+
 def master_alive():
-    return subprocess.run(["ssh", "-O", "check", LOGIN_ALIAS],
-                          stdout=subprocess.DEVNULL,
-                          stderr=subprocess.DEVNULL).returncode == 0
+    return master_state() == "alive"
+
+def configured_login_port():
+    r = subprocess.run(["ssh", "-G", LOGIN_ALIAS], capture_output=True,
+                       text=True)
+    for line in r.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key.lower() == "port":
+            return value.strip()
+    return None
+
+def acquire_master_lock():
+    """与 hpc_session.py 共用认证锁，禁止默认与 old 同时发起 OTP 登录。"""
+    lock = open(MASTER_LOCK_PATH, "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return lock
+    except OSError:
+        lock.close()
+        return None
+
+def release_master_lock(lock):
+    try:
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        lock.close()
+    except OSError:
+        pass
 
 def write_ssh_block(user, host, port, compute_host):
     """在 ~/.ssh/config 中写入/更新受管块（hpc-login + hpc-compute）。"""
@@ -82,7 +124,10 @@ Host {LOGIN_ALIAS}
     ControlMaster auto
     ControlPath ~/.ssh/cm-%r@%h:%p
     ControlPersist 12h
-    ServerAliveInterval 60
+    BatchMode yes
+    ProxyCommand {HPC_MASTER_GUARD}
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
 
 Host {COMPUTE_ALIAS}
     HostName {compute_host}
@@ -107,35 +152,56 @@ Host {COMPUTE_ALIAS}
     os.chmod(SSH_CONFIG, 0o600)
 
 def establish_master(user, host, port, compute_placeholder="127.0.0.1"):
-    """确保到登录网关的 master 连接存在（自动 OTP）。"""
+    """确保默认 master 存在；绝不在旧默认 master 旁边暗建第二条。"""
 
-    write_ssh_block(user, host, port, compute_placeholder)
-    if master_alive():
-        print(f"[OK] 复用已存在的 {LOGIN_ALIAS} master 连接")
-        return
-    with open(os.path.join(OTP_DIR, "otpauth.txt")) as f:
-        uri = f.read().strip()
-    otp, info = otp_now_from_uri(uri)
-    remain = info["period"] - (int(time.time()) % info["period"])
-    if remain < 5:
-        time.sleep(remain + 1)
-        otp, _ = otp_now_from_uri(uri)
-    print(f"[INFO] 用 OTP 建立到 {host} 的 master 连接 ...")
-    child = pexpect.spawn(f"ssh -fN {LOGIN_ALIAS}", timeout=40, encoding="utf-8")
-    child.expect(r"[Oo]ne-time [Pp]assword.*:")
-    child.sendline(otp)
-    idx = child.expect([pexpect.EOF, r"[Oo]ne-time [Pp]assword.*:",
-                        r"[Pp]ermission denied", pexpect.TIMEOUT], timeout=30)
-    if idx == 1:
-        otp, _ = otp_now_from_uri(uri)
+    lock = acquire_master_lock()
+    if lock is None:
+        sys.exit("[INFO] 另一个入口正在创建/维护 HPC 长连接，本次不并发登录；稍后查看状态。")
+    try:
+        current_port = configured_login_port()
+        state = master_state()
+        if state == "unknown":
+            sys.exit("[WARN] ControlMaster 状态检查超时；为防止双连接，本次不重建。")
+        if state == "alive" and current_port != str(port):
+            sys.exit(
+                f"[ERROR] 默认 master 当前在端口 {current_port}，配置要求 {port}。\n"
+                f"        为避免并行默认连接，请先执行：\n"
+                f"        python /Users/zhangwuhan/code/hpc_agent/scripts/hpc_session.py switch {port}")
+        write_ssh_block(user, host, port, compute_placeholder)
+        state = master_state()
+        if state == "unknown":
+            sys.exit("[WARN] ControlMaster 状态检查超时；为防止双连接，本次不重建。")
+        if state == "alive":
+            print(f"[OK] 复用已存在的 {LOGIN_ALIAS} master 连接")
+            return
+        with open(os.path.join(OTP_DIR, "otpauth.txt")) as f:
+            uri = f.read().strip()
+        otp, info = otp_now_from_uri(uri)
+        remain = info["period"] - (int(time.time()) % info["period"])
+        if remain < 5:
+            time.sleep(remain + 1)
+            otp, _ = otp_now_from_uri(uri)
+        print(f"[INFO] 用 OTP 建立到 {host} 的 master 连接 ...")
+        child = pexpect.spawn(
+            f"ssh -o ProxyCommand=none -o BatchMode=no -o ControlMaster=yes "
+            f"-o ServerAliveInterval=15 -o ServerAliveCountMax=3 "
+            f"-fN {LOGIN_ALIAS}", timeout=40, encoding="utf-8")
+        child.expect(r"[Oo]ne-time [Pp]assword.*:")
         child.sendline(otp)
-        child.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=30)
-    elif idx >= 2:
-        sys.exit(f"[ERROR] 认证失败:\n{child.before}")
-    time.sleep(1.5)
-    if not master_alive():
-        sys.exit("[ERROR] master 未建立（检查网络/VPN/OTP）")
-    print("[SUCCESS] master 已建立")
+        idx = child.expect([pexpect.EOF, r"[Oo]ne-time [Pp]assword.*:",
+                            r"[Pp]ermission denied", pexpect.TIMEOUT], timeout=30)
+        if idx == 1:
+            otp, _ = otp_now_from_uri(uri)
+            child.sendline(otp)
+            child.expect([pexpect.EOF, pexpect.TIMEOUT], timeout=30)
+        elif idx >= 2:
+            sys.exit(f"[ERROR] 认证失败:\n{child.before}")
+        time.sleep(1.5)
+        if not master_alive():
+            sys.exit("[ERROR] master 未建立（检查网络/VPN/OTP）")
+        print("[SUCCESS] master 已建立")
+    finally:
+        release_master_lock(lock)
 
 def ssh_login(cmd):
     """经 master 在登录节点执行命令，返回 stdout。
@@ -159,7 +225,7 @@ def node_spec(partition):
             continue
     return cpus, mem
 
-AUTO_PARTITIONS = ["intel-sc3", "amd-ep2", "amd-ep2-short"]
+AUTO_PARTITIONS = ["intel-sc3", "amd-ep5", "amd-ep2"]
 
 def partition_capacity(part, cpus, mem_gb):
     """该分区当前是否有单节点能立即满足 cpus + mem_gb；返回 (能否, 该分区单节点总CPU, 总内存G)。"""
@@ -181,7 +247,8 @@ def partition_capacity(part, cpus, mem_gb):
 def pick_partition(conf, cpus, mem_gb):
     """按可用性动态选区。返回 (分区, 是否立即可用, 节点总CPU, 节点总内存G)。"""
     spec = conf["alloc"]["partition"].strip()
-    cands = AUTO_PARTITIONS if spec.lower() == "auto" else        [p.strip() for p in spec.split(",") if p.strip()]
+    cands = (AUTO_PARTITIONS if spec.lower() == "auto" else
+             [p.strip() for p in spec.split(",") if p.strip()])
     fallback = None
     for p in cands:
         ok, nc, nm = partition_capacity(p, cpus, mem_gb)
@@ -305,7 +372,7 @@ def cmd_down(conf):
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.path.exists(ALLOC_FILE):
         os.remove(ALLOC_FILE)
-    print("[INFO] master 已关闭，分配记录已清除")
+    print("[INFO] 默认 master 已关闭，分配记录已清除；old 临时连接不受影响")
 
 def main():
     conf = load_conf()
